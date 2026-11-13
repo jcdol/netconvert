@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Calculateurs gratuits pour l'administration systèmes, réseaux, cloud et cybersécurité : IPv4/CIDR, VLSM, IPv6, chmod, RAID, CVSS… 100 % local.">
+<meta name="theme-color" content="#0b0f14">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="NetConvert">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>NetConvert — Calculateurs Admin Sys, Réseau, Cloud & Cyber</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -169,6 +178,10 @@ body.preview #lockScreen::after{content:'Aperçu — clique n\'importe où pour 
 button.danger{background:color-mix(in srgb,var(--err) 14%,var(--panel2));border-color:color-mix(in srgb,var(--err) 45%,transparent);color:var(--err);font-weight:600}
 .fjdm{display:block;margin:8px auto 0;opacity:.6}
 body.booting .app{visibility:hidden}
+.instbtn{display:none}
+body.can-install .instbtn{display:inline-flex;align-items:center;gap:6px}
+.side-foot .instbtn{width:100%;justify-content:center;margin-bottom:8px;font-size:13px}
+.hinst{margin-top:18px}
 .foot{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);color:var(--mut);font-size:13px;text-align:center}
 .menu-btn{display:none}
 @media(max-width:860px){
@@ -196,7 +209,7 @@ body.booting .app{visibility:hidden}
   <button class="menu-btn" id="menuBtn" aria-label="Menu">☰ Menu</button>
   <div class="sbox"><input id="search" placeholder="Rechercher un outil…" autocomplete="off"><kbd>/</kbd></div>
   <nav id="nav"></nav>
-  <div class="side-foot"><span>100 % local · aucune donnée envoyée</span></div>
+  <div class="side-foot"><button class="instbtn" type="button">⬇ Installer l'application</button><span>100 % local · aucune donnée envoyée</span></div>
 </aside>
 <main id="main"></main>
 </div>
@@ -747,15 +760,31 @@ init(){const go=()=>{const t=$('#uuty').value,sz=Math.min(128,Math.max(8,+$('#uu
 /* ---------- Stockage local ---------- */
 const store={get(k,d){try{const v=localStorage.getItem('nc_'+k);return v?JSON.parse(v):d}catch{return d}},set(k,v){try{localStorage.setItem('nc_'+k,JSON.stringify(v))}catch{}}};
 
+/* ---------- Application installable (PWA) ---------- */
+let installEvt=null;
+const isStandalone=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const refreshInstall=()=>document.body.classList.toggle('can-install',!isStandalone()&&(!!installEvt||isIOS));
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;refreshInstall()});
+window.addEventListener('appinstalled',()=>{installEvt=null;refreshInstall();toast('NetConvert est installé')});
+document.body.insertAdjacentHTML('beforeend',`<div id="iosModal" class="modal" hidden><div class="mbox"><div class="mhead"><b>Installer NetConvert</b><button data-close aria-label="Fermer">✕</button></div>
+<ol class="note" style="margin:6px 0 0;padding-left:20px;line-height:1.9;font-size:14px;color:var(--txt)"><li>Ouvre ce site dans <b>Safari</b>.</li><li>Touche le bouton <b>Partager</b> (carré avec une flèche vers le haut).</li><li>Choisis <b>« Sur l'écran d'accueil »</b>, puis <b>Ajouter</b>.</li></ol></div></div>`);
+$('#iosModal').addEventListener('click',e=>{if(e.target.id==='iosModal'||e.target.closest('[data-close]'))$('#iosModal').hidden=true});
+document.addEventListener('click',async e=>{if(!e.target.closest('.instbtn'))return;
+  if(installEvt){installEvt.prompt();try{await installEvt.userChoice}catch{}installEvt=null;refreshInstall()}
+  else if(isIOS)$('#iosModal').hidden=false;});
+if('serviceWorker' in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))window.addEventListener('load',()=>navigator.serviceWorker.register('/sw.js').catch(()=>{}));
+refreshInstall();
+
 /* ---------- Démarrage : config serveur (Cloudflare) ou locale ---------- */
 (async function boot(){
 let SERVER=false;
 async function fetchCfg(){try{const c=new AbortController(),t=setTimeout(()=>c.abort(),3000);const r=await fetch('/api/config',{cache:'no-store',signal:c.signal});clearTimeout(t);
   if(r.ok&&(r.headers.get('content-type')||'').includes('json')){SERVER=true;return await r.json()}}catch{}return null}
-const remote=await fetchCfg();
+const remote=await fetchCfg();if(remote)store.set('cfg_srv',remote);
 /* ---------- Configuration (modifiable dans l'espace admin) ---------- */
 const CFG0={title:'NetConvert',subtitle:'Sys · Réseau · Cloud · Cyber',banner:'',bannerType:'info',hidden:[],locked:false,lockMsg:'Le site est temporairement indisponible pour maintenance. Merci de revenir un peu plus tard.'};
-const cfg={...CFG0,...(SERVER?remote:store.get('cfg',{}))};if(!Array.isArray(cfg.hidden))cfg.hidden=[];
+const cfg={...CFG0,...(SERVER?remote:(store.get('cfg_srv',null)||store.get('cfg',{})))};if(!Array.isArray(cfg.hidden))cfg.hidden=[];
 const ALL=T.slice();for(let i=T.length-1;i>=0;i--)if(cfg.hidden.includes(T[i].id))T.splice(i,1);
 const NAME=cfg.title||'NetConvert';
 $('.brand b').textContent=NAME;$('.brand small').textContent=cfg.subtitle;
@@ -768,7 +797,7 @@ const SLUG={net:'reseau',sys:'systemes',cloud:'cloud',cyber:'cybersecurite'};
 const catOf=slug=>Object.keys(SLUG).find(k=>SLUG[k]===slug);
 main.innerHTML=`<section class="tool" id="t-accueil">
 <div class="hero"><h1>Calculateurs pour l'administration <span class="grad">systèmes, réseaux, cloud et sécurité</span></h1>
-<p class="desc">${T.length} outils, résultats instantanés, aucune donnée envoyée.</p></div>
+<p class="desc">${T.length} outils, résultats instantanés, aucune donnée envoyée.</p><button class="instbtn pri hinst" type="button">⬇ Installer l'application</button></div>
 <div class="cats">${Object.entries(CATS).filter(([k])=>T.some(t=>t.cat===k)).map(([k,[n,c,d,ic]])=>{const l=T.filter(t=>t.cat===k);return `<a class="ccard" href="#${SLUG[k]}" style="--c:${c}">
 <div class="ctop"><span class="cic">${ic}</span><span class="ccount">${l.length} outils</span></div>
 <h2>${n}</h2><p>${d}</p><ul>${l.slice(0,4).map(t=>`<li>${t.name}</li>`).join('')}${l.length>4?`<li class="more">+ ${l.length-4} autre${l.length-4>1?'s':''}</li>`:''}</ul>
